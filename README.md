@@ -83,6 +83,16 @@ create_fit_card("", results[0]) → "Cannot create a fit card without an outfit 
 
 ---
 
+## Stretch Features
+
+### Retry Logic with Fallback (+1pt)
+If `search_listings` returns no results and the query included a size or price filter, the agent automatically retries with the size filter removed and the price limit raised by 50%. The user sees a warning note in the listing panel explaining what was adjusted. If the retry also returns nothing, the agent returns the standard no-results error.
+
+Example: "vintage jacket size XXS under $10" → no results → retried with no size filter and price raised to $15 → found results. Panel 1 shows: "⚠️ No exact matches found. Retried with loosened constraints (removed size filter, raised price limit to $15) and found results."
+
+### Price Comparison Tool (+2pts)
+Added a fourth tool `compare_price(item: dict) → str` that estimates whether a listing's price is fair by finding comparable items in the dataset (same category, overlapping style tags) and comparing the item's price to the average. Returns a verdict of GREAT DEAL, FAIR PRICE, or PRICED HIGH with reasoning and the price range of comparable listings. The assessment appears in the listing panel below the item details.
+
 ## Spec Reflection
 
 One way the spec helped: writing the planning loop in plain conditional logic in planning.md before touching agent.py made the implementation straightforward — the spec became a direct translation into code with no ambiguity about branching.
