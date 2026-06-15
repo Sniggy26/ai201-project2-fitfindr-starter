@@ -180,3 +180,61 @@ Write only the caption. No hashtags. No explanation."""
 
     except Exception:
         return "Unable to generate fit card. Please try again."
+    
+# ── Tool 4: compare_price ─────────────────────────────────────────────────────
+
+def compare_price(item: dict) -> str:
+    """
+    Estimates whether the price of a listing is fair based on comparable
+    listings in the dataset.
+
+    Args:
+        item: A listing dict (from search_listings) with at least:
+              category, price, condition, style_tags
+
+    Returns:
+        A non-empty string with a price assessment and reasoning.
+        Never raises an exception.
+    """
+    try:
+        listings = load_listings()
+
+        # Find comparable items: same category, overlapping style tags
+        comparables = []
+        for listing in listings:
+            if listing["id"] == item.get("id"):
+                continue
+            if listing["category"] != item["category"]:
+                continue
+            tag_overlap = len(set(listing["style_tags"]) & set(item["style_tags"]))
+            if tag_overlap > 0:
+                comparables.append(listing)
+
+        if not comparables:
+            return f"Not enough comparable listings to assess the price of ${item['price']} for this item."
+
+        prices = [c["price"] for c in comparables]
+        avg_price = sum(prices) / len(prices)
+        min_price = min(prices)
+        max_price = max(prices)
+        item_price = item["price"]
+
+        if item_price < avg_price * 0.8:
+            assessment = "great deal"
+            verdict = f"At ${item_price}, this is below the average of ${avg_price:.2f} for similar items — a great deal."
+        elif item_price <= avg_price * 1.2:
+            assessment = "fair price"
+            verdict = f"At ${item_price}, this is right around the average of ${avg_price:.2f} for similar items — a fair price."
+        else:
+            assessment = "priced high"
+            verdict = f"At ${item_price}, this is above the average of ${avg_price:.2f} for similar items — priced on the higher end."
+
+        return (
+            f"Price Assessment: {assessment.upper()}\n"
+            f"{verdict}\n"
+            f"Comparable listings range from ${min_price} to ${max_price} "
+            f"across {len(comparables)} similar items in the dataset."
+        )
+
+    except Exception:
+        return "Unable to compare price at this time. Please try again."

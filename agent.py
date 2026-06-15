@@ -6,7 +6,7 @@ natural language user query, passing state between them via a session dict.
 """
 
 import re
-from tools import search_listings, suggest_outfit, create_fit_card
+from tools import search_listings, suggest_outfit, create_fit_card, compare_price
 
 
 # ── session state ─────────────────────────────────────────────────────────────
@@ -21,6 +21,8 @@ def _new_session(query: str, wardrobe: dict) -> dict:
         "outfit_suggestion": None,
         "fit_card": None,
         "error": None,
+        "retry_note": None,
+        "price_assessment": None,
     }
 
 
@@ -31,15 +33,12 @@ def _parse_query(query: str) -> dict:
     Extract description, size, and max_price from a natural language query
     using regex. Returns a dict with keys: description, size, max_price.
     """
-    # Extract price (e.g. "under $30", "under 30", "$25")
     price_match = re.search(r'under\s*\$?(\d+(?:\.\d+)?)', query, re.IGNORECASE)
     max_price = float(price_match.group(1)) if price_match else None
 
-    # Extract size (e.g. "size M", "size XL", "size W30")
     size_match = re.search(r'\bsize\s+([A-Za-z0-9/]+)\b', query, re.IGNORECASE)
     size = size_match.group(1) if size_match else None
 
-    # Remove size and price fragments to get clean description
     description = query
     if price_match:
         description = description.replace(price_match.group(0), "")
@@ -77,7 +76,25 @@ def run_agent(query: str, wardrobe: dict) -> dict:
     )
     session["search_results"] = results
 
-    # If no results, set error and return early
+    # Step 3b: Retry with loosened constraints if no results
+    if not results and (parsed["size"] is not None or parsed["max_price"] is not None):
+        retry_size = None
+        retry_price = parsed["max_price"] * 1.5 if parsed["max_price"] else None
+        results = search_listings(
+            description=parsed["description"],
+            size=retry_size,
+            max_price=retry_price,
+        )
+        session["search_results"] = results
+        if results:
+            adjustments = []
+            if parsed["size"]:
+                adjustments.append("removed size filter")
+            if parsed["max_price"]:
+                adjustments.append(f"raised price limit to ${retry_price:.0f}")
+            session["retry_note"] = f"No exact matches found. Retried with loosened constraints ({', '.join(adjustments)}) and found results."
+
+    # If still no results, set error and return early
     if not results:
         session["error"] = (
             "No listings found for your search. "
@@ -87,6 +104,9 @@ def run_agent(query: str, wardrobe: dict) -> dict:
 
     # Step 4: Select top result
     session["selected_item"] = results[0]
+
+    # Step 4b: Compare price
+    session["price_assessment"] = compare_price(session["selected_item"])
 
     # Step 5: Suggest outfit
     outfit = suggest_outfit(session["selected_item"], wardrobe)
@@ -123,3 +143,11 @@ if __name__ == "__main__":
         wardrobe=get_example_wardrobe(),
     )
     print(f"Error message: {session2['error']}")
+
+    print("\n\n=== Retry logic path ===\n")
+    session3 = run_agent(
+        query="graphic tee size XXS under $5",
+        wardrobe=get_example_wardrobe(),
+    )
+    print(f"Retry note: {session3['retry_note']}")
+    print(f"Found: {session3['selected_item']['title'] if session3['selected_item'] else None}")
